@@ -1,0 +1,21 @@
+{
+  "name": "CorpseMechanism.Tests.EditMode",
+  "rootNamespace": "CorpseMechanism.Tests.EditMode",
+  "references": [
+    "CorpseMechanism.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
