@@ -2,7 +2,7 @@
 
 ## Phase
 
-Milestone 1 in progress — normal death, limited lives, and same-player respawn validated.
+Milestone 1 in progress — persistent normal corpse generation and standing validated.
 
 ## Completed
 
@@ -29,10 +29,16 @@ Milestone 1 in progress — normal death, limited lives, and same-player respawn
   restored deterministically after respawn.
 - Normal trigger hazard prefab and Bootstrap scene hazard integration created through Editor APIs.
 - Death, life, respawn, failure, and restart behavior tests created and executed.
+- Dedicated normal corpse prefab and idempotent corpse initialization implemented.
+- CorpseFactory independently consumes accepted deaths and creates exactly one corpse per death.
+- LevelSession registers unique runtime corpses without changing life or failure semantics.
+- Runtime corpses persist across ordinary respawns and are removed by scene restart lifecycle.
+- Player standing and GroundProbe support on normal corpse colliders validated in Play Mode.
+- NormalHazard ignores corpses because only PlayerLifeController can accept damage.
 
 ## Next task
 
-Run `Prompts/04_CORPSE_SYSTEM.md` to implement the normal physical corpse only.
+Run `Prompts/05_PRESSURE_DOOR.md` to implement corpse/player weight, pressure plate, and door only.
 
 ## Known issues
 
@@ -50,8 +56,8 @@ Run `Prompts/04_CORPSE_SYSTEM.md` to implement the normal physical corpse only.
 
 - project import and compilation: passed;
 - project validation: passed;
-- Player, NormalHazard, and bootstrap scene generation: passed twice with stable file hashes;
-- Edit Mode tests: 11 executed, 11 passed;
-- Play Mode tests: 14 executed, 14 passed;
+- Player, NormalHazard, NormalCorpse, and bootstrap scene generation: passed twice with stable file hashes;
+- Edit Mode tests: 21 executed, 21 passed;
+- Play Mode tests: 23 executed, 23 passed;
 - Windows x64 Development Build: passed;
 - build output: `Builds/Windows/DIEGAME.exe`.

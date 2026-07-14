@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using CorpseMechanism.Corpse;
 using CorpseMechanism.Death;
 using CorpseMechanism.Player;
 using UnityEngine;
@@ -31,6 +33,8 @@ namespace CorpseMechanism.Level
         private IRespawnScheduler _respawnScheduler;
         private IActiveSceneReloader _sceneReloader;
         private bool _subscribed;
+        private readonly List<CorpseController> _spawnedCorpses =
+            new List<CorpseController>();
 
         public event Action<int> RemainingLivesChanged;
 
@@ -41,6 +45,24 @@ namespace CorpseMechanism.Level
         public int RemainingLives { get; private set; }
 
         public LevelSessionState State { get; private set; }
+
+        public int SpawnedCorpseCount
+        {
+            get
+            {
+                RemoveDestroyedCorpseReferences();
+                return _spawnedCorpses.Count;
+            }
+        }
+
+        public IReadOnlyList<CorpseController> SpawnedCorpses
+        {
+            get
+            {
+                RemoveDestroyedCorpseReferences();
+                return _spawnedCorpses;
+            }
+        }
 
         private void Awake()
         {
@@ -75,7 +97,20 @@ namespace CorpseMechanism.Level
             _initialLives = Mathf.Max(1, initialLives);
             RemainingLives = _initialLives;
             State = LevelSessionState.Playing;
+            _spawnedCorpses.Clear();
             Subscribe();
+        }
+
+        public bool RegisterCorpse(CorpseController corpse)
+        {
+            RemoveDestroyedCorpseReferences();
+            if (corpse == null || _spawnedCorpses.Contains(corpse))
+            {
+                return false;
+            }
+
+            _spawnedCorpses.Add(corpse);
+            return true;
         }
 
         public void RestartLevel()
@@ -122,6 +157,11 @@ namespace CorpseMechanism.Level
             }
 
             _subscribed = false;
+        }
+
+        private void RemoveDestroyedCorpseReferences()
+        {
+            _spawnedCorpses.RemoveAll(corpse => corpse == null);
         }
 
         private sealed class ActiveSceneReloader : IActiveSceneReloader

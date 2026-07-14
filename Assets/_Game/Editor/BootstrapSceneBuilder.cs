@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CorpseMechanism.Corpse;
 using CorpseMechanism.Death;
 using CorpseMechanism.Level;
 using CorpseMechanism.Player;
@@ -23,6 +24,7 @@ namespace CorpseMechanism.Editor
         private const string PlayerSpawnName = "PlayerSpawn";
         private const string LevelSystemsName = "LevelSystems";
         private const string NormalHazardName = "NormalHazard";
+        private const string RuntimeCorpsesName = "RuntimeCorpses";
         private const string MenuRoot = "Corpse Mechanism/Infrastructure/";
 
         [MenuItem(MenuRoot + "Create or Update Bootstrap Scene")]
@@ -31,6 +33,7 @@ namespace CorpseMechanism.Editor
             EnsureSceneDirectoryExists();
             GameObject playerPrefab = PlayerPrototypeBuilder.CreateOrUpdatePlayerPrefab();
             GameObject hazardPrefab = DeathPrototypeBuilder.CreateOrUpdateNormalHazardPrefab();
+            GameObject corpsePrefab = CorpsePrototypeBuilder.CreateOrUpdateNormalCorpsePrefab();
 
             Scene previousActiveScene = SceneManager.GetActiveScene();
             Scene generatedScene = OpenOrCreateGeneratedScene(
@@ -40,7 +43,11 @@ namespace CorpseMechanism.Editor
             try
             {
                 SceneManager.SetActiveScene(generatedScene);
-                CreateOrUpdateSceneContents(generatedScene, playerPrefab, hazardPrefab);
+                CreateOrUpdateSceneContents(
+                    generatedScene,
+                    playerPrefab,
+                    hazardPrefab,
+                    corpsePrefab);
 
                 if (!EditorSceneManager.SaveScene(generatedScene, ScenePath))
                 {
@@ -111,7 +118,8 @@ namespace CorpseMechanism.Editor
         private static void CreateOrUpdateSceneContents(
             Scene scene,
             GameObject playerPrefab,
-            GameObject hazardPrefab)
+            GameObject hazardPrefab,
+            GameObject corpsePrefab)
         {
             GameObject levelRoot = GetOrCreateUniqueRoot(scene, LevelRootName);
 
@@ -184,6 +192,7 @@ namespace CorpseMechanism.Editor
 
             LevelSession levelSession = GetOrAddComponent<LevelSession>(levelSystems);
             RespawnController respawnController = GetOrAddComponent<RespawnController>(levelSystems);
+            CorpseFactory corpseFactory = GetOrAddComponent<CorpseFactory>(levelSystems);
             PlayerLifeController playerLife = player.GetComponent<PlayerLifeController>();
             if (playerLife == null)
             {
@@ -193,8 +202,35 @@ namespace CorpseMechanism.Editor
 
             respawnController.Configure(playerLife, playerSpawn.transform, 0.65f);
             levelSession.Configure(playerLife, respawnController, 3);
+
+            GameObject runtimeCorpses =
+                GetOrCreateUniqueChild(levelRoot.transform, RuntimeCorpsesName);
+            runtimeCorpses.transform.localPosition = Vector3.zero;
+            runtimeCorpses.transform.localRotation = Quaternion.identity;
+            runtimeCorpses.transform.localScale = Vector3.one;
+
+            if (runtimeCorpses.GetComponentsInChildren<CorpseController>(true).Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "RuntimeCorpses must be empty in the saved bootstrap scene.");
+            }
+
+            CorpseController corpseController = corpsePrefab.GetComponent<CorpseController>();
+            if (corpseController == null)
+            {
+                throw new InvalidOperationException(
+                    "Generated NormalCorpse prefab must contain CorpseController.");
+            }
+
+            corpseFactory.Configure(
+                playerLife,
+                corpseController,
+                levelSession,
+                runtimeCorpses.transform,
+                Vector2.zero);
             EditorUtility.SetDirty(respawnController);
             EditorUtility.SetDirty(levelSession);
+            EditorUtility.SetDirty(corpseFactory);
         }
 
         private static GameObject GetOrCreateHazardInstance(

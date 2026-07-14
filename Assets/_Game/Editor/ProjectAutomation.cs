@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CorpseMechanism.Corpse;
 using CorpseMechanism.Death;
 using CorpseMechanism.Level;
 using CorpseMechanism.Player;
@@ -23,6 +24,7 @@ namespace CorpseMechanism.Editor
         {
             "Assets/_Game/Runtime",
             "Assets/_Game/Editor",
+            "Assets/_Game/Runtime/Corpse",
             "Assets/_Game/Runtime/Death",
             "Assets/_Game/Runtime/Level",
             "Assets/_Game/Runtime/Player",
@@ -112,6 +114,7 @@ namespace CorpseMechanism.Editor
             ValidateBuildSettings(errors);
             ValidatePlayerPrefab(errors);
             ValidateNormalHazardPrefab(errors);
+            ValidateNormalCorpsePrefab(errors);
             ValidateBootstrapScene(errors);
 
             return errors;
@@ -299,6 +302,52 @@ namespace CorpseMechanism.Editor
             }
         }
 
+        private static void ValidateNormalCorpsePrefab(ICollection<string> errors)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                CorpsePrototypeBuilder.PrefabPath);
+            if (prefab == null)
+            {
+                errors.Add($"Normal corpse prefab is missing: {CorpsePrototypeBuilder.PrefabPath}");
+                return;
+            }
+
+            if (prefab.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("Normal corpse prefab must not contain 3D physics components.");
+            }
+
+            CorpseController[] corpses = prefab.GetComponentsInChildren<CorpseController>(true);
+            Rigidbody2D[] bodies = prefab.GetComponentsInChildren<Rigidbody2D>(true);
+            Collider2D[] colliders = prefab.GetComponentsInChildren<Collider2D>(true);
+            SpriteRenderer[] renderers = prefab.GetComponentsInChildren<SpriteRenderer>(true);
+            if (corpses.Length != 1 || bodies.Length != 1 ||
+                colliders.Length < 1 || renderers.Length != 1)
+            {
+                errors.Add(
+                    "Normal corpse prefab must contain exactly one CorpseController, " +
+                    "Rigidbody2D, and SpriteRenderer plus at least one Collider2D.");
+            }
+
+            if (bodies.Length == 1 &&
+                (bodies[0].constraints & RigidbodyConstraints2D.FreezeRotation) == 0)
+            {
+                errors.Add("Normal corpse Rigidbody2D must freeze Z rotation.");
+            }
+
+            if (prefab.GetComponentsInChildren<LegacyPlayerInputSource>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<PlayerMotor2D>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<PlayerLifeController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<GroundProbe2D>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<RespawnController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Camera>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<AudioListener>(true).Length > 0)
+            {
+                errors.Add("Normal corpse prefab contains an active-player or scene component.");
+            }
+        }
+
         private static void ValidateBuildSettings(ICollection<string> errors)
         {
             EditorBuildSettingsScene[] enabledScenes = EditorBuildSettings.scenes
@@ -413,6 +462,8 @@ namespace CorpseMechanism.Editor
             RespawnController[] respawnControllers =
                 levelRoot.GetComponentsInChildren<RespawnController>(true);
             NormalHazard[] hazards = levelRoot.GetComponentsInChildren<NormalHazard>(true);
+            CorpseFactory[] corpseFactories =
+                levelRoot.GetComponentsInChildren<CorpseFactory>(true);
 
             if (levelSessions.Length != 1)
             {
@@ -432,6 +483,47 @@ namespace CorpseMechanism.Editor
             if (hazards.Length < 1)
             {
                 errors.Add("Bootstrap scene must contain at least one NormalHazard.");
+            }
+
+            if (corpseFactories.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one CorpseFactory.");
+            }
+            else
+            {
+                CorpseFactory factory = corpseFactories[0];
+                if (factory.Player == null ||
+                    factory.LevelSession == null ||
+                    factory.NormalCorpsePrefab == null ||
+                    factory.CorpseParent == null)
+                {
+                    errors.Add(
+                        "CorpseFactory must have explicit Player, LevelSession, " +
+                        "NormalCorpse Prefab, and CorpseParent references.");
+                }
+                else if (!string.Equals(
+                    AssetDatabase.GetAssetPath(factory.NormalCorpsePrefab),
+                    CorpsePrototypeBuilder.PrefabPath,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add("CorpseFactory must reference the generated NormalCorpse prefab.");
+                }
+            }
+
+            Transform[] runtimeCorpseRoots = levelRoot.transform.Cast<Transform>()
+                .Where(child => string.Equals(
+                    child.name,
+                    "RuntimeCorpses",
+                    StringComparison.Ordinal))
+                .ToArray();
+            if (runtimeCorpseRoots.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one RuntimeCorpses parent.");
+            }
+            else if (runtimeCorpseRoots[0]
+                .GetComponentsInChildren<CorpseController>(true).Length > 0)
+            {
+                errors.Add("RuntimeCorpses must not contain pre-generated corpses.");
             }
 
             if (respawnControllers.Length == 1 && respawnControllers[0].SpawnPoint != null)
