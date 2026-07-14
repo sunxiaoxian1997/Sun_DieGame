@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CorpseMechanism.Death;
+using CorpseMechanism.Level;
+using CorpseMechanism.Player;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -20,6 +23,10 @@ namespace CorpseMechanism.Editor
         {
             "Assets/_Game/Runtime",
             "Assets/_Game/Editor",
+            "Assets/_Game/Runtime/Death",
+            "Assets/_Game/Runtime/Level",
+            "Assets/_Game/Runtime/Player",
+            "Assets/_Game/Prefabs",
             "Assets/_Game/Tests/EditMode",
             "Assets/_Game/Tests/PlayMode",
             "Assets/_Game/Scenes"
@@ -103,6 +110,8 @@ namespace CorpseMechanism.Editor
             ValidateRequiredPaths(errors);
             ValidateRuntimeAssemblyBoundary(errors);
             ValidateBuildSettings(errors);
+            ValidatePlayerPrefab(errors);
+            ValidateNormalHazardPrefab(errors);
             ValidateBootstrapScene(errors);
 
             return errors;
@@ -166,6 +175,127 @@ namespace CorpseMechanism.Editor
                         "Runtime source must not reference UnityEditor: " +
                         sourceFile.Substring(projectRootPath.Length + 1));
                 }
+
+                if (sourceContents.IndexOf("UnityEngine.InputSystem", StringComparison.Ordinal) >= 0)
+                {
+                    errors.Add(
+                        "Runtime source must not reference the new Input System: " +
+                        sourceFile.Substring(projectRootPath.Length + 1));
+                }
+            }
+        }
+
+        private static void ValidatePlayerPrefab(ICollection<string> errors)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                PlayerPrototypeBuilder.PrefabPath);
+
+            if (prefab == null)
+            {
+                errors.Add($"Player prefab is missing: {PlayerPrototypeBuilder.PrefabPath}");
+                return;
+            }
+
+            if (prefab.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("Player prefab must not contain 3D physics components.");
+            }
+
+            Rigidbody2D[] bodies = prefab.GetComponentsInChildren<Rigidbody2D>(true);
+            Collider2D[] colliders = prefab.GetComponentsInChildren<Collider2D>(true);
+            LegacyPlayerInputSource[] inputs =
+                prefab.GetComponentsInChildren<LegacyPlayerInputSource>(true);
+            GroundProbe2D[] probes = prefab.GetComponentsInChildren<GroundProbe2D>(true);
+            PlayerMotor2D[] motors = prefab.GetComponentsInChildren<PlayerMotor2D>(true);
+            PlayerLifeController[] lifeControllers =
+                prefab.GetComponentsInChildren<PlayerLifeController>(true);
+            SpriteRenderer[] renderers = prefab.GetComponentsInChildren<SpriteRenderer>(true);
+
+            if (bodies.Length != 1 || colliders.Length != 1 || inputs.Length != 1 ||
+                probes.Length != 1 || motors.Length != 1 || lifeControllers.Length != 1 ||
+                renderers.Length != 1)
+            {
+                errors.Add(
+                    "Player prefab must contain exactly one Rigidbody2D, Collider2D, " +
+                    "LegacyPlayerInputSource, GroundProbe2D, PlayerMotor2D, " +
+                    "PlayerLifeController, and SpriteRenderer.");
+                return;
+            }
+
+            if ((bodies[0].constraints & RigidbodyConstraints2D.FreezeRotation) == 0)
+            {
+                errors.Add("Player Rigidbody2D must freeze Z rotation.");
+            }
+
+            SerializedObject serializedMotor = new SerializedObject(motors[0]);
+            string[] requiredMotorReferences =
+            {
+                "_body",
+                "_groundProbe",
+                "_inputSourceComponent"
+            };
+
+            foreach (string propertyName in requiredMotorReferences)
+            {
+                SerializedProperty property = serializedMotor.FindProperty(propertyName);
+                if (property == null || property.objectReferenceValue == null)
+                {
+                    errors.Add(
+                        $"PlayerMotor2D prefab reference is missing: {propertyName}");
+                }
+            }
+
+            SerializedObject serializedLife = new SerializedObject(lifeControllers[0]);
+            string[] requiredLifeReferences =
+            {
+                "_motor",
+                "_body",
+                "_bodyCollider",
+                "_groundProbe",
+                "_renderer"
+            };
+
+            foreach (string propertyName in requiredLifeReferences)
+            {
+                SerializedProperty property = serializedLife.FindProperty(propertyName);
+                if (property == null || property.objectReferenceValue == null)
+                {
+                    errors.Add(
+                        $"PlayerLifeController prefab reference is missing: {propertyName}");
+                }
+            }
+        }
+
+        private static void ValidateNormalHazardPrefab(ICollection<string> errors)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                DeathPrototypeBuilder.HazardPrefabPath);
+            if (prefab == null)
+            {
+                errors.Add(
+                    $"Normal hazard prefab is missing: {DeathPrototypeBuilder.HazardPrefabPath}");
+                return;
+            }
+
+            if (prefab.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("Normal hazard prefab must not contain 3D physics components.");
+            }
+
+            NormalHazard[] hazards = prefab.GetComponentsInChildren<NormalHazard>(true);
+            Collider2D[] colliders = prefab.GetComponentsInChildren<Collider2D>(true);
+            SpriteRenderer[] renderers = prefab.GetComponentsInChildren<SpriteRenderer>(true);
+            if (hazards.Length != 1 || colliders.Length != 1 || renderers.Length != 1)
+            {
+                errors.Add(
+                    "Normal hazard prefab must contain exactly one NormalHazard, " +
+                    "Collider2D, and SpriteRenderer.");
+            }
+            else if (!colliders[0].isTrigger)
+            {
+                errors.Add("Normal hazard prefab Collider2D must be a trigger.");
             }
         }
 
@@ -268,6 +398,66 @@ namespace CorpseMechanism.Editor
                 levelRoot.GetComponentsInChildren<Collider>(true).Length > 0)
             {
                 errors.Add("Bootstrap scene must not contain 3D physics components.");
+            }
+
+            PlayerMotor2D[] activePlayers = roots
+                .SelectMany(root => root.GetComponentsInChildren<PlayerMotor2D>(false))
+                .ToArray();
+
+            if (activePlayers.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one active player.");
+            }
+
+            LevelSession[] levelSessions = levelRoot.GetComponentsInChildren<LevelSession>(true);
+            RespawnController[] respawnControllers =
+                levelRoot.GetComponentsInChildren<RespawnController>(true);
+            NormalHazard[] hazards = levelRoot.GetComponentsInChildren<NormalHazard>(true);
+
+            if (levelSessions.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one LevelSession.");
+            }
+
+            if (respawnControllers.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one RespawnController.");
+            }
+            else if (respawnControllers[0].Player == null ||
+                     respawnControllers[0].SpawnPoint == null)
+            {
+                errors.Add("RespawnController must have explicit Player and SpawnPoint references.");
+            }
+
+            if (hazards.Length < 1)
+            {
+                errors.Add("Bootstrap scene must contain at least one NormalHazard.");
+            }
+
+            if (respawnControllers.Length == 1 && respawnControllers[0].SpawnPoint != null)
+            {
+                Vector3 spawnPosition = respawnControllers[0].SpawnPoint.position;
+                bool hazardOverlapsSpawn = hazards
+                    .SelectMany(hazard => hazard.GetComponentsInChildren<Collider2D>(true))
+                    .Any(collider => collider.bounds.Contains(spawnPosition));
+                if (hazardOverlapsSpawn)
+                {
+                    errors.Add("NormalHazard must not overlap PlayerSpawn.");
+                }
+            }
+
+            Collider2D[] activeColliders = roots
+                .SelectMany(root => root.GetComponentsInChildren<Collider2D>(false))
+                .ToArray();
+
+            bool hasGround = activeColliders.Any(collider =>
+                !collider.isTrigger &&
+                (activePlayers.Length != 1 ||
+                 !collider.transform.IsChildOf(activePlayers[0].transform)));
+
+            if (!hasGround)
+            {
+                errors.Add("Bootstrap scene must contain an active non-trigger 2D ground collider.");
             }
 
             foreach (GameObject root in roots)

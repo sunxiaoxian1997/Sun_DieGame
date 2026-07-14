@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CorpseMechanism.Death;
+using CorpseMechanism.Level;
+using CorpseMechanism.Player;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -16,22 +19,28 @@ namespace CorpseMechanism.Editor
 
         private const string CameraName = "BootstrapCamera";
         private const string GroundName = "GreyboxGround";
+        private const string JumpStepName = "JumpStep";
+        private const string PlayerSpawnName = "PlayerSpawn";
+        private const string LevelSystemsName = "LevelSystems";
+        private const string NormalHazardName = "NormalHazard";
         private const string MenuRoot = "Corpse Mechanism/Infrastructure/";
 
         [MenuItem(MenuRoot + "Create or Update Bootstrap Scene")]
         public static void CreateOrUpdateBootstrapScene()
         {
             EnsureSceneDirectoryExists();
+            GameObject playerPrefab = PlayerPrototypeBuilder.CreateOrUpdatePlayerPrefab();
+            GameObject hazardPrefab = DeathPrototypeBuilder.CreateOrUpdateNormalHazardPrefab();
 
             Scene previousActiveScene = SceneManager.GetActiveScene();
-            Scene generatedScene = EditorSceneManager.NewScene(
-                NewSceneSetup.EmptyScene,
-                NewSceneMode.Additive);
+            Scene generatedScene = OpenOrCreateGeneratedScene(
+                previousActiveScene,
+                out bool closeGeneratedSceneAfterSave);
 
             try
             {
                 SceneManager.SetActiveScene(generatedScene);
-                CreateSceneContents(generatedScene);
+                CreateOrUpdateSceneContents(generatedScene, playerPrefab, hazardPrefab);
 
                 if (!EditorSceneManager.SaveScene(generatedScene, ScenePath))
                 {
@@ -47,45 +56,276 @@ namespace CorpseMechanism.Editor
             }
             finally
             {
-                if (generatedScene.IsValid() && generatedScene.isLoaded)
+                if (closeGeneratedSceneAfterSave && generatedScene.IsValid() && generatedScene.isLoaded)
                 {
                     EditorSceneManager.CloseScene(generatedScene, true);
                 }
 
-                if (previousActiveScene.IsValid() && previousActiveScene.isLoaded)
+                if (closeGeneratedSceneAfterSave && previousActiveScene.IsValid() && previousActiveScene.isLoaded)
                 {
                     SceneManager.SetActiveScene(previousActiveScene);
                 }
             }
         }
 
-        private static void CreateSceneContents(Scene scene)
+        private static Scene OpenOrCreateGeneratedScene(
+            Scene activeScene,
+            out bool closeAfterSave)
         {
-            GameObject levelRoot = new GameObject(LevelRootName);
-            SceneManager.MoveGameObjectToScene(levelRoot, scene);
+            if (Application.isBatchMode)
+            {
+                closeAfterSave = false;
+                return AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) != null
+                    ? EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single)
+                    : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            }
 
-            GameObject cameraObject = new GameObject(
-                CameraName,
-                typeof(Camera),
-                typeof(AudioListener));
-            cameraObject.transform.SetParent(levelRoot.transform, false);
-            cameraObject.transform.position = new Vector3(0f, 1f, -10f);
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                throw new OperationCanceledException(
+                    "Bootstrap scene generation was cancelled to preserve unsaved scene changes.");
+            }
+
+            Scene loadedScene = SceneManager.GetSceneByPath(ScenePath);
+            if (loadedScene.IsValid() && loadedScene.isLoaded)
+            {
+                closeAfterSave = false;
+                return loadedScene;
+            }
+
+            bool canOpenAdditively = activeScene.IsValid() && !string.IsNullOrEmpty(activeScene.path);
+            closeAfterSave = canOpenAdditively;
+
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) != null)
+            {
+                return EditorSceneManager.OpenScene(
+                    ScenePath,
+                    canOpenAdditively ? OpenSceneMode.Additive : OpenSceneMode.Single);
+            }
+
+            return EditorSceneManager.NewScene(
+                NewSceneSetup.EmptyScene,
+                canOpenAdditively ? NewSceneMode.Additive : NewSceneMode.Single);
+        }
+
+        private static void CreateOrUpdateSceneContents(
+            Scene scene,
+            GameObject playerPrefab,
+            GameObject hazardPrefab)
+        {
+            GameObject levelRoot = GetOrCreateUniqueRoot(scene, LevelRootName);
+
+            GameObject cameraObject = GetOrCreateUniqueChild(levelRoot.transform, CameraName);
+            Camera camera = GetOrAddComponent<Camera>(cameraObject);
+            GetOrAddComponent<AudioListener>(cameraObject);
+
+            cameraObject.transform.localPosition = new Vector3(0f, 0f, -10f);
+            cameraObject.transform.localRotation = Quaternion.identity;
+            cameraObject.transform.localScale = Vector3.one;
             cameraObject.tag = "MainCamera";
 
-            Camera camera = cameraObject.GetComponent<Camera>();
             camera.orthographic = true;
             camera.orthographicSize = 5f;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.12f, 0.14f, 0.17f, 1f);
 
-            GameObject ground = new GameObject(GroundName, typeof(SpriteRenderer));
-            ground.transform.SetParent(levelRoot.transform, false);
-            ground.transform.localPosition = new Vector3(0f, -3.5f, 0f);
-            ground.transform.localScale = new Vector3(16f, 1f, 1f);
+            GameObject ground = GetOrCreateUniqueChild(levelRoot.transform, GroundName);
+            SpriteRenderer renderer = GetOrAddComponent<SpriteRenderer>(ground);
+            BoxCollider2D groundCollider = GetOrAddComponent<BoxCollider2D>(ground);
 
-            SpriteRenderer renderer = ground.GetComponent<SpriteRenderer>();
+            ground.transform.localPosition = new Vector3(0f, -3.5f, 0f);
+            ground.transform.localRotation = Quaternion.identity;
+            ground.transform.localScale = Vector3.one;
+
             renderer.sprite = LoadBuiltInSprite();
+            renderer.drawMode = SpriteDrawMode.Sliced;
+            renderer.size = new Vector2(16f, 1f);
             renderer.color = new Color(0.45f, 0.48f, 0.52f, 1f);
+            groundCollider.size = new Vector2(16f, 1f);
+            groundCollider.offset = Vector2.zero;
+            groundCollider.isTrigger = false;
+
+            GameObject jumpStep = GetOrCreateUniqueChild(levelRoot.transform, JumpStepName);
+            SpriteRenderer stepRenderer = GetOrAddComponent<SpriteRenderer>(jumpStep);
+            BoxCollider2D stepCollider = GetOrAddComponent<BoxCollider2D>(jumpStep);
+
+            jumpStep.transform.localPosition = new Vector3(2f, -2.7f, 0f);
+            jumpStep.transform.localRotation = Quaternion.identity;
+            jumpStep.transform.localScale = Vector3.one;
+            stepRenderer.sprite = LoadBuiltInSprite();
+            stepRenderer.drawMode = SpriteDrawMode.Sliced;
+            stepRenderer.size = new Vector2(2f, 0.6f);
+            stepRenderer.color = new Color(0.58f, 0.6f, 0.64f, 1f);
+            stepCollider.size = new Vector2(2f, 0.6f);
+            stepCollider.offset = Vector2.zero;
+            stepCollider.isTrigger = false;
+
+            GameObject playerSpawn = GetOrCreateUniqueChild(levelRoot.transform, PlayerSpawnName);
+            playerSpawn.transform.localPosition = new Vector3(-4f, -2.1f, 0f);
+            playerSpawn.transform.localRotation = Quaternion.identity;
+            playerSpawn.transform.localScale = Vector3.one;
+
+            GameObject player = GetOrCreatePlayerInstance(scene, levelRoot.transform, playerPrefab);
+            player.transform.position = playerSpawn.transform.position;
+            player.transform.rotation = Quaternion.identity;
+            player.transform.localScale = Vector3.one;
+            player.SetActive(true);
+
+            GameObject hazard = GetOrCreateHazardInstance(scene, levelRoot.transform, hazardPrefab);
+            hazard.transform.localPosition = new Vector3(5f, -2.2f, 0f);
+            hazard.transform.localRotation = Quaternion.identity;
+            hazard.transform.localScale = Vector3.one;
+            hazard.SetActive(true);
+
+            GameObject levelSystems = GetOrCreateUniqueChild(levelRoot.transform, LevelSystemsName);
+            levelSystems.transform.localPosition = Vector3.zero;
+            levelSystems.transform.localRotation = Quaternion.identity;
+            levelSystems.transform.localScale = Vector3.one;
+
+            LevelSession levelSession = GetOrAddComponent<LevelSession>(levelSystems);
+            RespawnController respawnController = GetOrAddComponent<RespawnController>(levelSystems);
+            PlayerLifeController playerLife = player.GetComponent<PlayerLifeController>();
+            if (playerLife == null)
+            {
+                throw new InvalidOperationException(
+                    "Generated Player prefab must contain PlayerLifeController.");
+            }
+
+            respawnController.Configure(playerLife, playerSpawn.transform, 0.65f);
+            levelSession.Configure(playerLife, respawnController, 3);
+            EditorUtility.SetDirty(respawnController);
+            EditorUtility.SetDirty(levelSession);
+        }
+
+        private static GameObject GetOrCreateHazardInstance(
+            Scene scene,
+            Transform levelRoot,
+            GameObject hazardPrefab)
+        {
+            NormalHazard[] hazards = levelRoot.GetComponentsInChildren<NormalHazard>(true);
+            if (hazards.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    "Bootstrap scene contains more than one normal hazard.");
+            }
+
+            if (hazards.Length == 1)
+            {
+                GameObject existingHazard = hazards[0].gameObject;
+                GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(existingHazard);
+                string sourcePath = source != null ? AssetDatabase.GetAssetPath(source) : string.Empty;
+                if (!string.Equals(
+                    sourcePath,
+                    DeathPrototypeBuilder.HazardPrefabPath,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "Bootstrap hazard must be an instance of the generated NormalHazard prefab.");
+                }
+
+                return existingHazard;
+            }
+
+            GameObject created = PrefabUtility.InstantiatePrefab(hazardPrefab, scene) as GameObject;
+            if (created == null)
+            {
+                throw new InvalidOperationException("Failed to instantiate the NormalHazard prefab.");
+            }
+
+            created.name = NormalHazardName;
+            created.transform.SetParent(levelRoot, true);
+            return created;
+        }
+
+        private static GameObject GetOrCreatePlayerInstance(
+            Scene scene,
+            Transform levelRoot,
+            GameObject playerPrefab)
+        {
+            PlayerMotor2D[] motors = levelRoot.GetComponentsInChildren<PlayerMotor2D>(true);
+            if (motors.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    "Bootstrap scene contains more than one player motor.");
+            }
+
+            if (motors.Length == 1)
+            {
+                GameObject existingPlayer = motors[0].gameObject;
+                GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(existingPlayer);
+                string sourcePath = source != null ? AssetDatabase.GetAssetPath(source) : string.Empty;
+
+                if (!string.Equals(
+                    sourcePath,
+                    PlayerPrototypeBuilder.PrefabPath,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "Bootstrap player must be an instance of the generated Player prefab.");
+                }
+
+                return existingPlayer;
+            }
+
+            GameObject created = PrefabUtility.InstantiatePrefab(playerPrefab, scene) as GameObject;
+            if (created == null)
+            {
+                throw new InvalidOperationException("Failed to instantiate the Player prefab.");
+            }
+
+            created.transform.SetParent(levelRoot, true);
+            return created;
+        }
+
+        private static GameObject GetOrCreateUniqueRoot(Scene scene, string objectName)
+        {
+            GameObject[] matches = scene.GetRootGameObjects()
+                .Where(root => string.Equals(root.name, objectName, StringComparison.Ordinal))
+                .ToArray();
+
+            if (matches.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Scene contains more than one root object named '{objectName}'.");
+            }
+
+            if (matches.Length == 1)
+            {
+                return matches[0];
+            }
+
+            GameObject created = new GameObject(objectName);
+            SceneManager.MoveGameObjectToScene(created, scene);
+            return created;
+        }
+
+        private static GameObject GetOrCreateUniqueChild(Transform parent, string objectName)
+        {
+            GameObject[] matches = parent.Cast<Transform>()
+                .Where(child => string.Equals(child.name, objectName, StringComparison.Ordinal))
+                .Select(child => child.gameObject)
+                .ToArray();
+
+            if (matches.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    $"'{parent.name}' contains more than one child named '{objectName}'.");
+            }
+
+            if (matches.Length == 1)
+            {
+                return matches[0];
+            }
+
+            GameObject created = new GameObject(objectName);
+            created.transform.SetParent(parent, false);
+            return created;
+        }
+
+        private static T GetOrAddComponent<T>(GameObject gameObject) where T : Component
+        {
+            T component = gameObject.GetComponent<T>();
+            return component != null ? component : gameObject.AddComponent<T>();
         }
 
         private static Sprite LoadBuiltInSprite()

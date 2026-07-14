@@ -12,15 +12,23 @@ if (-not $env:UNITY_EDITOR_PATH) {
 $logsDir = Join-Path $ProjectPath "Logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
-& $env:UNITY_EDITOR_PATH `
-    -batchmode `
-    -quit `
-    -accept-apiupdate `
-    -projectPath $ProjectPath `
-    -buildTarget StandaloneWindows64 `
-    -executeMethod $ExecuteMethod `
-    -logFile (Join-Path $logsDir "build-windows.log")
+$arguments = @(
+    "-batchmode",
+    "-quit",
+    "-accept-apiupdate",
+    "-projectPath", $ProjectPath,
+    "-buildTarget", "StandaloneWindows64",
+    "-executeMethod", $ExecuteMethod,
+    "-logFile", (Join-Path $logsDir "build-windows.log")
+)
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Unity Windows build failed with exit code $LASTEXITCODE. See Logs/build-windows.log."
+$unityProcess = Start-Process `
+    -FilePath $env:UNITY_EDITOR_PATH `
+    -ArgumentList $arguments `
+    -Wait `
+    -PassThru `
+    -WindowStyle Hidden
+
+if ($unityProcess.ExitCode -ne 0) {
+    throw "Unity Windows build failed with exit code $($unityProcess.ExitCode). See Logs/build-windows.log."
 }

@@ -12,14 +12,22 @@ if (-not $env:UNITY_EDITOR_PATH) {
 $logsDir = Join-Path $ProjectPath "Logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
-& $env:UNITY_EDITOR_PATH `
-    -batchmode `
-    -quit `
-    -accept-apiupdate `
-    -projectPath $ProjectPath `
-    -executeMethod $ExecuteMethod `
-    -logFile (Join-Path $logsDir "validation.log")
+$arguments = @(
+    "-batchmode",
+    "-quit",
+    "-accept-apiupdate",
+    "-projectPath", $ProjectPath,
+    "-executeMethod", $ExecuteMethod,
+    "-logFile", (Join-Path $logsDir "validation.log")
+)
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Unity project validation failed with exit code $LASTEXITCODE. See Logs/validation.log."
+$unityProcess = Start-Process `
+    -FilePath $env:UNITY_EDITOR_PATH `
+    -ArgumentList $arguments `
+    -Wait `
+    -PassThru `
+    -WindowStyle Hidden
+
+if ($unityProcess.ExitCode -ne 0) {
+    throw "Unity project validation failed with exit code $($unityProcess.ExitCode). See Logs/validation.log."
 }
