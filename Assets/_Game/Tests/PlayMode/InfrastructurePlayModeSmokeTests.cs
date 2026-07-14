@@ -29,12 +29,9 @@ namespace CorpseMechanism.Tests.PlayMode
             Object.Destroy(testObject);
             yield return null;
 
-            Assert.Multiple(() =>
-            {
-                Assert.That(bodyIsConfigured, Is.True);
-                Assert.That(colliderSize, Is.EqualTo(new Vector2(2f, 1f)));
-                Assert.That(testObject == null, Is.True);
-            });
+            Assert.That(bodyIsConfigured, Is.True);
+            Assert.That(colliderSize, Is.EqualTo(new Vector2(2f, 1f)));
+            Assert.That(testObject == null, Is.True);
         }
     }
 }
