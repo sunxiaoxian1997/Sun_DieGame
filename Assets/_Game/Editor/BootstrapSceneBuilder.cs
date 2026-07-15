@@ -5,6 +5,7 @@ using System.Linq;
 using CorpseMechanism.Corpse;
 using CorpseMechanism.Death;
 using CorpseMechanism.Level;
+using CorpseMechanism.Interaction;
 using CorpseMechanism.Player;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -34,6 +35,9 @@ namespace CorpseMechanism.Editor
             GameObject playerPrefab = PlayerPrototypeBuilder.CreateOrUpdatePlayerPrefab();
             GameObject hazardPrefab = DeathPrototypeBuilder.CreateOrUpdateNormalHazardPrefab();
             GameObject corpsePrefab = CorpsePrototypeBuilder.CreateOrUpdateNormalCorpsePrefab();
+            GameObject pressurePlatePrefab =
+                InteractionPrototypeBuilder.CreateOrUpdatePressurePlatePrefab();
+            GameObject doorPrefab = InteractionPrototypeBuilder.CreateOrUpdateDoorPrefab();
 
             Scene previousActiveScene = SceneManager.GetActiveScene();
             Scene generatedScene = OpenOrCreateGeneratedScene(
@@ -47,7 +51,9 @@ namespace CorpseMechanism.Editor
                     generatedScene,
                     playerPrefab,
                     hazardPrefab,
-                    corpsePrefab);
+                    corpsePrefab,
+                    pressurePlatePrefab,
+                    doorPrefab);
 
                 if (!EditorSceneManager.SaveScene(generatedScene, ScenePath))
                 {
@@ -119,7 +125,9 @@ namespace CorpseMechanism.Editor
             Scene scene,
             GameObject playerPrefab,
             GameObject hazardPrefab,
-            GameObject corpsePrefab)
+            GameObject corpsePrefab,
+            GameObject pressurePlatePrefab,
+            GameObject doorPrefab)
         {
             GameObject levelRoot = GetOrCreateUniqueRoot(scene, LevelRootName);
 
@@ -231,6 +239,79 @@ namespace CorpseMechanism.Editor
             EditorUtility.SetDirty(respawnController);
             EditorUtility.SetDirty(levelSession);
             EditorUtility.SetDirty(corpseFactory);
+
+            GameObject pressurePlateObject = GetOrCreatePrefabInstance<PressurePlate>(
+                scene,
+                levelRoot.transform,
+                pressurePlatePrefab,
+                InteractionPrototypeBuilder.PressurePlatePrefabPath,
+                "PressurePlate");
+            pressurePlateObject.transform.localPosition = new Vector3(5f, -3f, 0f);
+            pressurePlateObject.transform.localRotation = Quaternion.identity;
+            pressurePlateObject.transform.localScale = Vector3.one;
+            pressurePlateObject.SetActive(true);
+
+            PressurePlate pressurePlate = pressurePlateObject.GetComponent<PressurePlate>();
+            GameObject doorObject = GetOrCreatePrefabInstance<DoorController>(
+                scene,
+                levelRoot.transform,
+                doorPrefab,
+                InteractionPrototypeBuilder.DoorPrefabPath,
+                "Door");
+            doorObject.transform.localPosition = new Vector3(7f, -1.25f, 0f);
+            doorObject.transform.localRotation = Quaternion.identity;
+            doorObject.transform.localScale = Vector3.one;
+            doorObject.SetActive(true);
+
+            DoorController door = doorObject.GetComponent<DoorController>();
+            BoxCollider2D doorCollider = doorObject.GetComponent<BoxCollider2D>();
+            SpriteRenderer doorRenderer = doorObject.GetComponent<SpriteRenderer>();
+            door.Configure(
+                pressurePlate,
+                doorCollider,
+                doorObject.transform,
+                doorRenderer,
+                new Vector3(0f, 4f, 0f));
+            EditorUtility.SetDirty(door);
+        }
+
+        private static GameObject GetOrCreatePrefabInstance<T>(
+            Scene scene,
+            Transform levelRoot,
+            GameObject prefab,
+            string expectedPrefabPath,
+            string displayName) where T : Component
+        {
+            T[] components = levelRoot.GetComponentsInChildren<T>(true);
+            if (components.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Bootstrap scene contains more than one {displayName}.");
+            }
+
+            if (components.Length == 1)
+            {
+                GameObject existing = components[0].gameObject;
+                GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(existing);
+                string sourcePath = source != null ? AssetDatabase.GetAssetPath(source) : string.Empty;
+                if (!string.Equals(sourcePath, expectedPrefabPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Bootstrap {displayName} must use the generated prefab.");
+                }
+
+                return existing;
+            }
+
+            GameObject created = PrefabUtility.InstantiatePrefab(prefab, scene) as GameObject;
+            if (created == null)
+            {
+                throw new InvalidOperationException($"Failed to instantiate {displayName} prefab.");
+            }
+
+            created.name = displayName;
+            created.transform.SetParent(levelRoot, true);
+            return created;
         }
 
         private static GameObject GetOrCreateHazardInstance(

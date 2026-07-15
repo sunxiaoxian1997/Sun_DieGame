@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using CorpseMechanism.Corpse;
+using CorpseMechanism.Interaction;
 using UnityEditor;
 using UnityEngine;
 
@@ -78,6 +79,7 @@ namespace CorpseMechanism.Editor
             Rigidbody2D body = GetOrAddSingleComponent<Rigidbody2D>(root);
             BoxCollider2D collider = GetOrAddSingleComponent<BoxCollider2D>(root);
             CorpseController controller = GetOrAddSingleComponent<CorpseController>(root);
+            WeightProvider weightProvider = GetOrAddSingleComponent<WeightProvider>(root);
 
             renderer.sprite = LoadBuiltInGreyboxSprite();
             renderer.drawMode = SpriteDrawMode.Sliced;
@@ -96,11 +98,13 @@ namespace CorpseMechanism.Editor
             collider.size = new Vector2(1.4f, 0.55f);
             collider.offset = Vector2.zero;
             collider.isTrigger = false;
+            weightProvider.Configure(1f);
 
             EditorUtility.SetDirty(renderer);
             EditorUtility.SetDirty(body);
             EditorUtility.SetDirty(collider);
             EditorUtility.SetDirty(controller);
+            EditorUtility.SetDirty(weightProvider);
             EditorUtility.SetDirty(root);
         }
 

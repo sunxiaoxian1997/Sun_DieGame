@@ -2,7 +2,7 @@
 
 ## Phase
 
-Milestone 1 in progress — persistent normal corpse generation and standing validated.
+Milestone 1 in progress - weight, pressure plate, and physical door validated.
 
 ## Completed
 
@@ -35,10 +35,20 @@ Milestone 1 in progress — persistent normal corpse generation and standing val
 - Runtime corpses persist across ordinary respawns and are removed by scene restart lifecycle.
 - Player standing and GroundProbe support on normal corpse colliders validated in Play Mode.
 - NormalHazard ignores corpses because only PlayerLifeController can accept damage.
+- Explicit `IWeightedObject` and `WeightProvider` contracts implemented for the player
+  and normal corpse without type-specific pressure-plate coupling.
+- PressurePlate rebuilds unique active weight from local 2D overlap state and emits only
+  real pressed/released transitions.
+- DoorController follows its explicitly assigned PressurePlate, disables its blocking
+  Collider2D while open, and restores the closed state without transform drift.
+- Idempotent PressurePlate and Door prefab generation plus Bootstrap scene wiring created
+  through Unity Editor APIs.
+- Weight, pressure threshold, duplicate collider, disable/destroy cleanup, corpse persistence,
+  door physics, and fresh lifecycle behavior tests created and executed.
 
 ## Next task
 
-Run `Prompts/05_PRESSURE_DOOR.md` to implement corpse/player weight, pressure plate, and door only.
+Run `Prompts/06_FIRST_LEVEL.md` to complete the first greybox level and exit flow only.
 
 ## Known issues
 
@@ -56,8 +66,9 @@ Run `Prompts/05_PRESSURE_DOOR.md` to implement corpse/player weight, pressure pl
 
 - project import and compilation: passed;
 - project validation: passed;
-- Player, NormalHazard, NormalCorpse, and bootstrap scene generation: passed twice with stable file hashes;
-- Edit Mode tests: 21 executed, 21 passed;
-- Play Mode tests: 23 executed, 23 passed;
+- Player, NormalHazard, NormalCorpse, PressurePlate, Door, and bootstrap scene generation:
+  passed twice with stable file hashes;
+- Edit Mode tests: 35 executed, 35 passed;
+- Play Mode tests: 35 executed, 35 passed;
 - Windows x64 Development Build: passed;
 - build output: `Builds/Windows/DIEGAME.exe`.

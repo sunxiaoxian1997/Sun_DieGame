@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using CorpseMechanism.Corpse;
 using CorpseMechanism.Death;
+using CorpseMechanism.Interaction;
 using CorpseMechanism.Level;
 using CorpseMechanism.Player;
 using UnityEditor;
@@ -115,6 +116,8 @@ namespace CorpseMechanism.Editor
             ValidatePlayerPrefab(errors);
             ValidateNormalHazardPrefab(errors);
             ValidateNormalCorpsePrefab(errors);
+            ValidatePressurePlatePrefab(errors);
+            ValidateDoorPrefab(errors);
             ValidateBootstrapScene(errors);
 
             return errors;
@@ -214,16 +217,22 @@ namespace CorpseMechanism.Editor
             PlayerLifeController[] lifeControllers =
                 prefab.GetComponentsInChildren<PlayerLifeController>(true);
             SpriteRenderer[] renderers = prefab.GetComponentsInChildren<SpriteRenderer>(true);
+            WeightProvider[] weights = prefab.GetComponentsInChildren<WeightProvider>(true);
 
             if (bodies.Length != 1 || colliders.Length != 1 || inputs.Length != 1 ||
                 probes.Length != 1 || motors.Length != 1 || lifeControllers.Length != 1 ||
-                renderers.Length != 1)
+                renderers.Length != 1 || weights.Length != 1)
             {
                 errors.Add(
                     "Player prefab must contain exactly one Rigidbody2D, Collider2D, " +
                     "LegacyPlayerInputSource, GroundProbe2D, PlayerMotor2D, " +
-                    "PlayerLifeController, and SpriteRenderer.");
+                    "PlayerLifeController, SpriteRenderer, and WeightProvider.");
                 return;
+            }
+
+            if (weights[0].Weight <= 0f)
+            {
+                errors.Add("Player WeightProvider must have positive weight.");
             }
 
             if ((bodies[0].constraints & RigidbodyConstraints2D.FreezeRotation) == 0)
@@ -322,12 +331,18 @@ namespace CorpseMechanism.Editor
             Rigidbody2D[] bodies = prefab.GetComponentsInChildren<Rigidbody2D>(true);
             Collider2D[] colliders = prefab.GetComponentsInChildren<Collider2D>(true);
             SpriteRenderer[] renderers = prefab.GetComponentsInChildren<SpriteRenderer>(true);
+            WeightProvider[] weights = prefab.GetComponentsInChildren<WeightProvider>(true);
             if (corpses.Length != 1 || bodies.Length != 1 ||
-                colliders.Length < 1 || renderers.Length != 1)
+                colliders.Length < 1 || renderers.Length != 1 || weights.Length != 1)
             {
                 errors.Add(
                     "Normal corpse prefab must contain exactly one CorpseController, " +
-                    "Rigidbody2D, and SpriteRenderer plus at least one Collider2D.");
+                    "Rigidbody2D, SpriteRenderer, and WeightProvider plus at least one Collider2D.");
+            }
+
+            else if (weights[0].Weight <= 0f)
+            {
+                errors.Add("Normal corpse WeightProvider must have positive weight.");
             }
 
             if (bodies.Length == 1 &&
@@ -345,6 +360,79 @@ namespace CorpseMechanism.Editor
                 prefab.GetComponentsInChildren<AudioListener>(true).Length > 0)
             {
                 errors.Add("Normal corpse prefab contains an active-player or scene component.");
+            }
+        }
+
+        private static void ValidatePressurePlatePrefab(ICollection<string> errors)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                InteractionPrototypeBuilder.PressurePlatePrefabPath);
+            if (prefab == null)
+            {
+                errors.Add("PressurePlate prefab is missing.");
+                return;
+            }
+
+            if (prefab.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("PressurePlate prefab must not contain 3D physics components.");
+            }
+
+            PressurePlate[] plates = prefab.GetComponentsInChildren<PressurePlate>(true);
+            Collider2D[] triggers = prefab.GetComponentsInChildren<Collider2D>(true)
+                .Where(collider => collider.isTrigger)
+                .ToArray();
+            if (plates.Length != 1 || triggers.Length < 1 ||
+                plates[0].ActivationThreshold <= 0f)
+            {
+                errors.Add(
+                    "PressurePlate prefab requires one PressurePlate, a 2D trigger, " +
+                    "and a positive threshold.");
+            }
+
+            if (prefab.GetComponentsInChildren<PlayerLifeController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<CorpseController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<DoorController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<LevelSession>(true).Length > 0)
+            {
+                errors.Add("PressurePlate prefab contains a forbidden gameplay component.");
+            }
+        }
+
+        private static void ValidateDoorPrefab(ICollection<string> errors)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                InteractionPrototypeBuilder.DoorPrefabPath);
+            if (prefab == null)
+            {
+                errors.Add("Door prefab is missing.");
+                return;
+            }
+
+            if (prefab.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("Door prefab must not contain 3D physics components.");
+            }
+
+            DoorController[] doors = prefab.GetComponentsInChildren<DoorController>(true);
+            Collider2D[] blockers = prefab.GetComponentsInChildren<Collider2D>(true)
+                .Where(collider => !collider.isTrigger)
+                .ToArray();
+            if (doors.Length != 1 || blockers.Length < 1)
+            {
+                errors.Add("Door prefab requires one DoorController and a 2D blocking collider.");
+            }
+
+            if (prefab.GetComponentsInChildren<PressurePlate>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<WeightProvider>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<PlayerLifeController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<CorpseController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<NormalHazard>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<LevelSession>(true).Length > 0)
+            {
+                errors.Add("Door prefab contains a forbidden gameplay component.");
             }
         }
 
@@ -464,6 +552,10 @@ namespace CorpseMechanism.Editor
             NormalHazard[] hazards = levelRoot.GetComponentsInChildren<NormalHazard>(true);
             CorpseFactory[] corpseFactories =
                 levelRoot.GetComponentsInChildren<CorpseFactory>(true);
+            PressurePlate[] pressurePlates =
+                levelRoot.GetComponentsInChildren<PressurePlate>(true);
+            DoorController[] doors =
+                levelRoot.GetComponentsInChildren<DoorController>(true);
 
             if (levelSessions.Length != 1)
             {
@@ -508,6 +600,21 @@ namespace CorpseMechanism.Editor
                 {
                     errors.Add("CorpseFactory must reference the generated NormalCorpse prefab.");
                 }
+            }
+
+            if (pressurePlates.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one PressurePlate.");
+            }
+
+            if (doors.Length != 1)
+            {
+                errors.Add("Bootstrap scene must contain exactly one DoorController.");
+            }
+            else if (pressurePlates.Length == 1 &&
+                     doors[0].PressurePlate != pressurePlates[0])
+            {
+                errors.Add("Bootstrap DoorController must explicitly reference its PressurePlate.");
             }
 
             Transform[] runtimeCorpseRoots = levelRoot.transform.Cast<Transform>()

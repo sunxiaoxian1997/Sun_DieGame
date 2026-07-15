@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using CorpseMechanism.Interaction;
 using CorpseMechanism.Player;
 using UnityEditor;
 using UnityEngine;
@@ -85,6 +86,7 @@ namespace CorpseMechanism.Editor
             PlayerMotor2D motor = GetOrAddSingleComponent<PlayerMotor2D>(root);
             PlayerLifeController lifeController =
                 GetOrAddSingleComponent<PlayerLifeController>(root);
+            WeightProvider weightProvider = GetOrAddSingleComponent<WeightProvider>(root);
 
             renderer.sprite = LoadBuiltInGreyboxSprite();
             renderer.drawMode = SpriteDrawMode.Sliced;
@@ -106,6 +108,7 @@ namespace CorpseMechanism.Editor
             motor.Configure(body, groundProbe, input, 5f, 7f);
             motor.SetControlEnabled(true);
             lifeController.Configure(motor, body, bodyCollider, groundProbe, renderer);
+            weightProvider.Configure(1f);
 
             EditorUtility.SetDirty(renderer);
             EditorUtility.SetDirty(body);
@@ -114,6 +117,7 @@ namespace CorpseMechanism.Editor
             EditorUtility.SetDirty(groundProbe);
             EditorUtility.SetDirty(motor);
             EditorUtility.SetDirty(lifeController);
+            EditorUtility.SetDirty(weightProvider);
             EditorUtility.SetDirty(root);
         }
 
