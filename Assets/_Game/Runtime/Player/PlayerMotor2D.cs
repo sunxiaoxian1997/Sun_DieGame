@@ -19,13 +19,13 @@ namespace CorpseMechanism.Player
         private MonoBehaviour _inputSourceComponent;
 
         [SerializeField]
-        [Min(0f)]
-        [Tooltip("Maximum horizontal movement speed in world units per second.")]
+        [Range(0f, 15f)]
+        [Tooltip("Maximum horizontal movement speed in world units per second. Level_001 baseline: 5.")]
         private float _moveSpeed = 5f;
 
         [SerializeField]
-        [Min(0f)]
-        [Tooltip("Vertical speed assigned when a grounded jump is accepted.")]
+        [Range(0f, 20f)]
+        [Tooltip("Vertical speed assigned when a grounded jump is accepted. Level_001 baseline: 7.")]
         private float _jumpSpeed = 7f;
 
         [SerializeField]

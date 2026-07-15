@@ -18,8 +18,8 @@ namespace CorpseMechanism.Level
         private Transform _spawnPoint;
 
         [SerializeField]
-        [Min(0f)]
-        [Tooltip("Seconds between accepted death and respawn.")]
+        [Range(0f, 3f)]
+        [Tooltip("Seconds between an accepted non-final death and respawn. Level_001 baseline: 0.65.")]
         private float _respawnDelay = 0.65f;
 
         private Coroutine _respawnRoutine;

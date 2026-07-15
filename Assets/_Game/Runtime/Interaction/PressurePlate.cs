@@ -18,8 +18,8 @@ namespace CorpseMechanism.Interaction
         private SpriteRenderer _renderer;
 
         [SerializeField]
-        [Min(0.0001f)]
-        [Tooltip("Unique active weight required to press this plate.")]
+        [Range(0.1f, 5f)]
+        [Tooltip("Total unique active gameplay weight required to press this plate. Level_001 baseline: 1.")]
         private float _activationThreshold = 1f;
 
         [SerializeField]

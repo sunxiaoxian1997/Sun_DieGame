@@ -18,8 +18,8 @@ namespace CorpseMechanism.Player
         private LayerMask _groundLayers = ~0;
 
         [SerializeField]
-        [Min(0.001f)]
-        [Tooltip("Distance cast downward from the player collider.")]
+        [Range(0.001f, 0.5f)]
+        [Tooltip("Ground-check cast distance below the player collider, in world units. Level_001 baseline: 0.08.")]
         private float _castDistance = 0.08f;
 
         [SerializeField]

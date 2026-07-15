@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/_Game/Scenes/Level_001.unity
+    guid: 982c735156e07664889e4352aaf17972
+  - enabled: 1
     path: Assets/_Game/Scenes/GreyboxBootstrap.unity
     guid: 4146eb4a00a34974b9ece9619ca3f0d1
   m_configObjects: {}

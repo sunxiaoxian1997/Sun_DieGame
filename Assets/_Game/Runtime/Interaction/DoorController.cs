@@ -21,7 +21,7 @@ namespace CorpseMechanism.Interaction
         private SpriteRenderer _renderer;
 
         [SerializeField]
-        [Tooltip("Local visual offset applied while the door is open.")]
+        [Tooltip("Local-space offset applied from the closed position while open. Level_001 baseline: (0, 4, 0).")]
         private Vector3 _openLocalOffset = new Vector3(0f, 4f, 0f);
 
         [SerializeField]

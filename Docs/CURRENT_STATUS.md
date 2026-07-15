@@ -2,7 +2,7 @@
 
 ## Phase
 
-Milestone 1 in progress - weight, pressure plate, and physical door validated.
+Milestone 1 first greybox gameplay loop implemented and validated.
 
 ## Completed
 
@@ -45,10 +45,36 @@ Milestone 1 in progress - weight, pressure plate, and physical door validated.
   through Unity Editor APIs.
 - Weight, pressure threshold, duplicate collider, disable/destroy cleanup, corpse persistence,
   door physics, and fresh lifecycle behavior tests created and executed.
+- Explicit Playing, Failed, and Completed level-session states implemented with one-shot
+  completion notification and terminal-state death protection.
+- LevelExit accepts only the explicitly assigned, currently alive player and rejects corpses,
+  hazards, unrelated colliders, dead players, and repeated completion attempts.
+- Minimal runtime status display reports remaining lives, current state, controls, and terminal
+  restart guidance without adding a formal UI framework.
+- Scene restart input is isolated in an explicit adapter and remains available after failure or
+  completion.
+- Idempotent LevelExit prefab and complete `Level_001` greybox generation implemented through
+  Unity Editor APIs.
+- `Level_001` contains the intended movement, normal death, persistent normal corpse, respawn,
+  pressure-plate, door, exit, completion, and restart flow with explicit scene references.
+- Build Settings now start with `Level_001`, while preserving `GreyboxBootstrap` as the second
+  validation scene.
+- Completion rules, exit filtering, status, restart, first-level structure, anti-bypass layout,
+  and the complete gameplay loop are covered by Edit Mode and Play Mode tests.
+- Milestone 2 playtest recording and acceptance-gate templates created for blind external testing,
+  first-completion timing, observed behavior, physics issues, unintended solutions, and Go/No-Go.
+- All ten Level_001 feel-tuning parameters are documented with their current values, exact
+  Prefab/scene Inspector locations, and Builder source locations.
+- Existing custom movement, ground probe, respawn, pressure threshold, and door offset fields now
+  provide clearer Inspector guidance and bounded sliders where a scalar tuning range is useful.
+- No additional tuning configuration asset or debug console was introduced because every required
+  parameter is already directly editable in its existing Prefab or scene component.
 
 ## Next task
 
-Run `Prompts/06_FIRST_LEVEL.md` to complete the first greybox level and exit flow only.
+Run blind Level_001 playtests with at least three people, record each result in `PLAYTEST_LOG.md`,
+evaluate `MILESTONE_2_ACCEPTANCE.md`, and make a Go/No-Go decision before designing another corpse
+mechanism.
 
 ## Known issues
 
@@ -62,13 +88,15 @@ Run `Prompts/06_FIRST_LEVEL.md` to complete the first greybox level and exit flo
 
 ## Last validated
 
-2026-07-14 with Unity 2022.3.62f3:
+2026-07-15 with Unity 2022.3.62f3:
 
 - project import and compilation: passed;
 - project validation: passed;
-- Player, NormalHazard, NormalCorpse, PressurePlate, Door, and bootstrap scene generation:
-  passed twice with stable file hashes;
-- Edit Mode tests: 35 executed, 35 passed;
-- Play Mode tests: 35 executed, 35 passed;
+- Player, NormalHazard, NormalCorpse, PressurePlate, Door, LevelExit, bootstrap scene, and
+  `Level_001` generation: passed twice with stable file hashes;
+- Milestone 2 infrastructure Builder check: passed twice with eight tracked generated-asset hashes
+  unchanged between runs;
+- Edit Mode tests: 46 executed, 46 passed;
+- Play Mode tests: 47 executed, 47 passed;
 - Windows x64 Development Build: passed;
 - build output: `Builds/Windows/DIEGAME.exe`.

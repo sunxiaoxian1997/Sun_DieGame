@@ -11,7 +11,8 @@ namespace CorpseMechanism.Level
     public enum LevelSessionState
     {
         Playing,
-        Failed
+        Failed,
+        Completed
     }
 
     [DisallowMultipleComponent]
@@ -39,6 +40,8 @@ namespace CorpseMechanism.Level
         public event Action<int> RemainingLivesChanged;
 
         public event Action LevelFailed;
+
+        public event Action LevelCompleted;
 
         public int InitialLives => _initialLives;
 
@@ -117,6 +120,19 @@ namespace CorpseMechanism.Level
         {
             (_sceneReloader ?? (_sceneReloader = new ActiveSceneReloader()))
                 .ReloadActiveScene();
+        }
+
+        public bool TryComplete()
+        {
+            if (State != LevelSessionState.Playing)
+            {
+                return false;
+            }
+
+            State = LevelSessionState.Completed;
+            Debug.Log("Level completed.", this);
+            LevelCompleted?.Invoke();
+            return true;
         }
 
         private void HandleDeathAccepted(DeathContext deathContext)

@@ -7,6 +7,7 @@ using CorpseMechanism.Death;
 using CorpseMechanism.Interaction;
 using CorpseMechanism.Level;
 using CorpseMechanism.Player;
+using CorpseMechanism.UI;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -27,8 +28,10 @@ namespace CorpseMechanism.Editor
             "Assets/_Game/Editor",
             "Assets/_Game/Runtime/Corpse",
             "Assets/_Game/Runtime/Death",
+            "Assets/_Game/Runtime/Interaction",
             "Assets/_Game/Runtime/Level",
             "Assets/_Game/Runtime/Player",
+            "Assets/_Game/Runtime/UI",
             "Assets/_Game/Prefabs",
             "Assets/_Game/Tests/EditMode",
             "Assets/_Game/Tests/PlayMode",
@@ -118,7 +121,10 @@ namespace CorpseMechanism.Editor
             ValidateNormalCorpsePrefab(errors);
             ValidatePressurePlatePrefab(errors);
             ValidateDoorPrefab(errors);
+            ValidateLevelExitPrefab(errors);
+            ValidateAllPrefabMissingScripts(errors);
             ValidateBootstrapScene(errors);
+            ValidateFirstLevelScene(errors);
 
             return errors;
         }
@@ -436,6 +442,71 @@ namespace CorpseMechanism.Editor
             }
         }
 
+        private static void ValidateLevelExitPrefab(ICollection<string> errors)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                FirstLevelBuilder.LevelExitPrefabPath);
+            if (prefab == null)
+            {
+                errors.Add("LevelExit prefab is missing.");
+                return;
+            }
+
+            if (prefab.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("LevelExit prefab must not contain 3D physics components.");
+            }
+
+            LevelExit[] exits = prefab.GetComponentsInChildren<LevelExit>(true);
+            Collider2D[] triggers = prefab.GetComponentsInChildren<Collider2D>(true)
+                .Where(collider => collider.isTrigger)
+                .ToArray();
+            if (exits.Length != 1 || triggers.Length != 1)
+            {
+                errors.Add("LevelExit prefab requires exactly one LevelExit and one 2D trigger.");
+            }
+            else if (exits[0].LevelSession != null || exits[0].Player != null)
+            {
+                errors.Add("LevelExit prefab must not reference scene Player or LevelSession objects.");
+            }
+
+            if (prefab.GetComponentsInChildren<WeightProvider>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<PlayerLifeController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<CorpseController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<NormalHazard>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<DoorController>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<PressurePlate>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<LevelSession>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<Camera>(true).Length > 0 ||
+                prefab.GetComponentsInChildren<AudioListener>(true).Length > 0)
+            {
+                errors.Add("LevelExit prefab contains a forbidden gameplay or scene component.");
+            }
+        }
+
+        private static void ValidateAllPrefabMissingScripts(ICollection<string> errors)
+        {
+            string[] prefabPaths =
+            {
+                PlayerPrototypeBuilder.PrefabPath,
+                DeathPrototypeBuilder.HazardPrefabPath,
+                CorpsePrototypeBuilder.PrefabPath,
+                InteractionPrototypeBuilder.PressurePlatePrefabPath,
+                InteractionPrototypeBuilder.DoorPrefabPath,
+                FirstLevelBuilder.LevelExitPrefabPath
+            };
+
+            foreach (string path in prefabPaths)
+            {
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (prefab != null)
+                {
+                    ValidateMissingScriptsRecursively(prefab, errors);
+                }
+            }
+        }
+
         private static void ValidateBuildSettings(ICollection<string> errors)
         {
             EditorBuildSettingsScene[] enabledScenes = EditorBuildSettings.scenes
@@ -447,17 +518,244 @@ namespace CorpseMechanism.Editor
                 errors.Add("Build Settings contains no enabled scenes.");
             }
 
-            int bootstrapEntries = enabledScenes.Count(scene =>
-                string.Equals(
-                    scene.path,
+            if (enabledScenes.Length < 2 ||
+                !string.Equals(
+                    enabledScenes[0].path,
+                    FirstLevelBuilder.ScenePath,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    enabledScenes[1].path,
                     BootstrapSceneBuilder.ScenePath,
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (bootstrapEntries != 1)
+                    StringComparison.OrdinalIgnoreCase))
             {
                 errors.Add(
-                    "Build Settings must contain exactly one enabled bootstrap scene entry: " +
-                    BootstrapSceneBuilder.ScenePath);
+                    "Build Settings must enable Level_001 at index 0 and GreyboxBootstrap at index 1.");
+            }
+        }
+
+        private static void ValidateFirstLevelScene(ICollection<string> errors)
+        {
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(FirstLevelBuilder.ScenePath) == null)
+            {
+                errors.Add($"First level scene is missing: {FirstLevelBuilder.ScenePath}");
+                return;
+            }
+
+            Scene existing = SceneManager.GetSceneByPath(FirstLevelBuilder.ScenePath);
+            bool alreadyLoaded = existing.IsValid() && existing.isLoaded;
+            Scene scene = existing;
+
+            try
+            {
+                if (!alreadyLoaded)
+                {
+                    scene = EditorSceneManager.OpenScene(
+                        FirstLevelBuilder.ScenePath,
+                        OpenSceneMode.Additive);
+                }
+
+                ValidateFirstLevelContents(scene, errors);
+            }
+            catch (Exception exception)
+            {
+                errors.Add($"Level_001 could not be opened or inspected: {exception.Message}");
+            }
+            finally
+            {
+                if (!alreadyLoaded && scene.IsValid() && scene.isLoaded)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        private static void ValidateFirstLevelContents(
+            Scene scene,
+            ICollection<string> errors)
+        {
+            GameObject[] roots = scene.GetRootGameObjects();
+            GameObject[] levelRoots = roots
+                .Where(root => string.Equals(
+                    root.name,
+                    FirstLevelBuilder.LevelRootName,
+                    StringComparison.Ordinal))
+                .ToArray();
+            if (levelRoots.Length != 1)
+            {
+                errors.Add("Level_001 must contain exactly one LevelRoot.");
+                return;
+            }
+
+            GameObject root = levelRoots[0];
+            if (root.GetComponentsInChildren<Rigidbody>(true).Length > 0 ||
+                root.GetComponentsInChildren<Collider>(true).Length > 0)
+            {
+                errors.Add("Level_001 must not contain 3D physics components.");
+            }
+
+            Camera[] cameras = root.GetComponentsInChildren<Camera>(true);
+            if (cameras.Length != 1 || !cameras[0].orthographic ||
+                !cameras[0].CompareTag("MainCamera"))
+            {
+                errors.Add("Level_001 requires exactly one orthographic MainCamera.");
+            }
+
+            if (root.GetComponentsInChildren<AudioListener>(true).Length != 1)
+            {
+                errors.Add("Level_001 requires exactly one AudioListener.");
+            }
+
+            PlayerLifeController[] players =
+                root.GetComponentsInChildren<PlayerLifeController>(true);
+            LevelSession[] sessions = root.GetComponentsInChildren<LevelSession>(true);
+            RespawnController[] respawns = root.GetComponentsInChildren<RespawnController>(true);
+            CorpseFactory[] factories = root.GetComponentsInChildren<CorpseFactory>(true);
+            NormalHazard[] hazards = root.GetComponentsInChildren<NormalHazard>(true);
+            PressurePlate[] plates = root.GetComponentsInChildren<PressurePlate>(true);
+            DoorController[] doors = root.GetComponentsInChildren<DoorController>(true);
+            LevelExit[] exits = root.GetComponentsInChildren<LevelExit>(true);
+            LevelStatusView[] statusViews = root.GetComponentsInChildren<LevelStatusView>(true);
+            LevelRestartInput[] restartInputs = root.GetComponentsInChildren<LevelRestartInput>(true);
+
+            ValidateExactCount(players, 1, "Player", errors);
+            ValidateExactCount(sessions, 1, "LevelSession", errors);
+            ValidateExactCount(respawns, 1, "RespawnController", errors);
+            ValidateExactCount(factories, 1, "CorpseFactory", errors);
+            ValidateExactCount(hazards, 1, "NormalHazard", errors);
+            ValidateExactCount(plates, 1, "PressurePlate", errors);
+            ValidateExactCount(doors, 1, "DoorController", errors);
+            ValidateExactCount(exits, 1, "LevelExit", errors);
+            ValidateExactCount(statusViews, 1, "LevelStatusView", errors);
+            ValidateExactCount(restartInputs, 1, "LevelRestartInput", errors);
+
+            Transform[] corpseRoots = root.transform.Cast<Transform>()
+                .Where(child => string.Equals(
+                    child.name,
+                    FirstLevelBuilder.RuntimeCorpsesName,
+                    StringComparison.Ordinal))
+                .ToArray();
+            if (corpseRoots.Length != 1)
+            {
+                errors.Add("Level_001 requires exactly one RuntimeCorpses parent.");
+            }
+            else if (corpseRoots[0].GetComponentsInChildren<CorpseController>(true).Length > 0)
+            {
+                errors.Add("Level_001 RuntimeCorpses must be empty in the saved scene.");
+            }
+
+            if (players.Length == 1 && respawns.Length == 1 &&
+                (respawns[0].Player != players[0] || respawns[0].SpawnPoint == null))
+            {
+                errors.Add("Level_001 RespawnController has invalid Player or Spawn references.");
+            }
+
+            if (players.Length == 1 && sessions.Length == 1 && factories.Length == 1)
+            {
+                CorpseFactory factory = factories[0];
+                if (factory.Player != players[0] ||
+                    factory.LevelSession != sessions[0] ||
+                    factory.NormalCorpsePrefab == null ||
+                    factory.CorpseParent == null ||
+                    corpseRoots.Length != 1 ||
+                    factory.CorpseParent != corpseRoots[0])
+                {
+                    errors.Add("Level_001 CorpseFactory explicit references are invalid.");
+                }
+            }
+
+            if (doors.Length == 1 && plates.Length == 1 &&
+                doors[0].PressurePlate != plates[0])
+            {
+                errors.Add("Level_001 Door must reference its unique PressurePlate.");
+            }
+
+            if (exits.Length == 1 && players.Length == 1 && sessions.Length == 1 &&
+                (exits[0].Player != players[0] ||
+                 exits[0].LevelSession != sessions[0] ||
+                 exits[0].Trigger == null ||
+                 !exits[0].Trigger.isTrigger))
+            {
+                errors.Add("Level_001 LevelExit explicit references or trigger are invalid.");
+            }
+
+            if (statusViews.Length == 1 && sessions.Length == 1 &&
+                statusViews[0].LevelSession != sessions[0])
+            {
+                errors.Add("LevelStatusView must reference the Level_001 LevelSession.");
+            }
+
+            if (restartInputs.Length == 1 && sessions.Length == 1 &&
+                restartInputs[0].LevelSession != sessions[0])
+            {
+                errors.Add("LevelRestartInput must reference the Level_001 LevelSession.");
+            }
+
+            if (plates.Length == 1 && plates[0].ActivationThreshold <= 0f)
+            {
+                errors.Add("Level_001 PressurePlate threshold must be positive.");
+            }
+
+            if (players.Length == 1)
+            {
+                WeightProvider weight = players[0].GetComponent<WeightProvider>();
+                if (weight == null || weight.Weight <= 0f)
+                {
+                    errors.Add("Level_001 Player must provide positive weight.");
+                }
+            }
+
+            if (respawns.Length == 1 && respawns[0].SpawnPoint != null &&
+                hazards.Length == 1)
+            {
+                Vector3 spawnPosition = respawns[0].SpawnPoint.position;
+                bool overlapsHazard = hazards[0]
+                    .GetComponentsInChildren<Collider2D>(true)
+                    .Any(collider => collider.bounds.Contains(spawnPosition));
+                if (overlapsHazard)
+                {
+                    errors.Add("Level_001 NormalHazard must not overlap PlayerSpawn.");
+                }
+            }
+
+            if (respawns.Length == 1 && respawns[0].SpawnPoint != null &&
+                doors.Length == 1 && exits.Length == 1 &&
+                !(respawns[0].SpawnPoint.position.x < doors[0].transform.position.x &&
+                  doors[0].transform.position.x < exits[0].transform.position.x))
+            {
+                errors.Add("Level_001 requires Spawn and Exit on opposite sides of the Door.");
+            }
+
+            if (doors.Length == 1 && doors[0].BlockingCollider != null)
+            {
+                Bounds doorBounds = doors[0].BlockingCollider.bounds;
+                bool overheadBlocker = root.GetComponentsInChildren<Collider2D>(true)
+                    .Where(collider => collider != doors[0].BlockingCollider && !collider.isTrigger)
+                    .Any(collider =>
+                        collider.bounds.min.x < doorBounds.max.x &&
+                        collider.bounds.max.x > doorBounds.min.x &&
+                        collider.bounds.min.y <= doorBounds.max.y + 0.01f &&
+                        collider.bounds.max.y > doorBounds.max.y);
+                if (!overheadBlocker)
+                {
+                    errors.Add("Level_001 requires a physical blocker above the Door.");
+                }
+            }
+
+            foreach (GameObject sceneRoot in roots)
+            {
+                ValidateMissingScriptsRecursively(sceneRoot, errors);
+            }
+        }
+
+        private static void ValidateExactCount<T>(
+            T[] components,
+            int expected,
+            string label,
+            ICollection<string> errors) where T : Component
+        {
+            if (components.Length != expected)
+            {
+                errors.Add($"Level_001 must contain exactly {expected} {label}.");
             }
         }
 
