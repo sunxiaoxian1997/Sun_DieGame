@@ -425,6 +425,21 @@ feat/pressure-door
 feat/level-001
 ```
 
+### 创建 Pull Request
+
+功能分支验证通过后，推送并发起 PR：
+
+```powershell
+git push -u origin feat/player-movement
+gh pr create --base main --title "feat: add basic 2D player movement" --body "实现左右移动、跳跃与地面检测。"
+```
+
+PR 描述应说明目标、改动文件和验证方式。合并前确保：
+
+- Edit Mode / Play Mode 测试通过；
+- `/review` 无遗留问题；
+- Git 工作区干净。
+
 Codex完成任务后，先执行：
 
 ```text
